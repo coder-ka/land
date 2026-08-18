@@ -63,11 +63,12 @@ unsafe extern "C" {
     fn land_lld_link(argc: c_int, argv: *const *const c_char) -> bool;
 }
 
-pub fn compile(ir: &str, output: &Path) -> Result<(), String> {
+pub fn compile(ir: &str, output: &Path, links: &[PathBuf]) -> Result<(), String> {
     let files = TemporaryFiles::new()?;
     emit_object(ir, &files.program)?;
+    #[cfg(not(target_os = "windows"))]
     emit_object(startup_ir(), &files.startup)?;
-    link(&files, output)
+    link(&files, output, links)
 }
 
 fn emit_object(ir: &str, output: &Path) -> Result<(), String> {
@@ -127,27 +128,50 @@ fn emit_object(ir: &str, output: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn link(files: &TemporaryFiles, output: &Path) -> Result<(), String> {
-    let arguments = [
-        "land-lld",
-        "--entry=_start",
-        "--build-id=none",
-        "-o",
-        output
-            .to_str()
-            .ok_or_else(|| "output path is not valid UTF-8".to_owned())?,
+fn link(files: &TemporaryFiles, output: &Path, links: &[PathBuf]) -> Result<(), String> {
+    let output = output
+        .to_str()
+        .ok_or_else(|| "output path is not valid UTF-8".to_owned())?;
+    let program = files
+        .program
+        .to_str()
+        .ok_or_else(|| "temporary path is not valid UTF-8".to_owned())?;
+    #[cfg(target_os = "windows")]
+    let mut arguments = vec![
+        "land-lld".to_owned(),
+        "/entry:main".to_owned(),
+        "/subsystem:console".to_owned(),
+        "/nodefaultlib".to_owned(),
+        format!("/out:{output}"),
+        program.to_owned(),
+    ];
+    #[cfg(not(target_os = "windows"))]
+    let mut arguments = vec![
+        "land-lld".to_owned(),
+        "--entry=_start".to_owned(),
+        "--build-id=none".to_owned(),
+        "-o".to_owned(),
+        output.to_owned(),
         files
             .startup
             .to_str()
-            .ok_or_else(|| "temporary path is not valid UTF-8".to_owned())?,
-        files
-            .program
-            .to_str()
-            .ok_or_else(|| "temporary path is not valid UTF-8".to_owned())?,
+            .ok_or_else(|| "temporary path is not valid UTF-8".to_owned())?
+            .to_owned(),
+        program.to_owned(),
     ];
+    arguments.extend(
+        links
+            .iter()
+            .map(|path| {
+                path.to_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| "link input path is not valid UTF-8".to_owned())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
     let arguments = arguments
         .iter()
-        .map(|argument| CString::new(*argument).unwrap())
+        .map(|argument| CString::new(argument.as_str()).unwrap())
         .collect::<Vec<_>>();
     let pointers = arguments
         .iter()
@@ -160,6 +184,7 @@ fn link(files: &TemporaryFiles, output: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn startup_ir() -> &'static str {
     r#"
 declare i32 @main()

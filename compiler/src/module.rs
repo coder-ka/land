@@ -5,7 +5,12 @@ use std::path::{Path, PathBuf};
 use crate::CompileError;
 use crate::ast::Program;
 
-pub fn load(entry: &Path) -> Result<Program, String> {
+pub struct LoadedProgram {
+    pub program: Program,
+    pub headers: Vec<PathBuf>,
+}
+
+pub fn load(entry: &Path) -> Result<LoadedProgram, String> {
     let entry = canonicalize_source(entry)?;
     if source_kind(&entry)? != SourceKind::Land {
         return Err("the entry file must have a .land extension".to_owned());
@@ -21,7 +26,14 @@ pub fn load(entry: &Path) -> Result<Program, String> {
         loading: HashSet::new(),
     };
     loader.visit(&entry)?;
-    loader.combine(&entry)
+    let headers = loader
+        .order
+        .iter()
+        .filter(|path| source_kind(path) == Ok(SourceKind::LandHeader))
+        .cloned()
+        .collect();
+    let program = loader.combine(&entry)?;
+    Ok(LoadedProgram { program, headers })
 }
 
 struct Loader {

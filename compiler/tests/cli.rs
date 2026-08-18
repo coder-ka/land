@@ -69,3 +69,73 @@ fn executable_requires_the_native_main_signature() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("fn main(): i32"));
 }
+
+#[test]
+fn reports_the_compiler_version() {
+    let output = Command::new(landc()).arg("--version").output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "landc 0.0.1\n");
+}
+
+#[test]
+fn requires_a_link_map_for_imported_headers() {
+    let fixture = Fixture::new();
+    let header = fixture.root.join("native.landh");
+    fs::write(&header, "extern \"C\" fn answer(): i32;").unwrap();
+    let source = fixture.root.join("main.land");
+    fs::write(
+        &source,
+        "import { answer } from \"./native.landh\"; fn main(): i32 { return answer(); }",
+    )
+    .unwrap();
+    let output = Command::new(landc())
+        .arg(source)
+        .args(["-o"])
+        .arg(fixture.root.join("answer"))
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no link map was provided"), "{stderr}");
+}
+
+#[test]
+fn rejects_multiple_providers_for_one_header() {
+    let fixture = Fixture::new();
+    let header = fixture.root.join("native.landh");
+    fs::write(&header, "extern \"C\" fn answer(): i32;").unwrap();
+    let source = fixture.root.join("main.land");
+    fs::write(
+        &source,
+        "import { answer } from \"./native.landh\"; fn main(): i32 { return answer(); }",
+    )
+    .unwrap();
+    let link_map = fixture.root.join("links.toml");
+    fs::write(
+        &link_map,
+        r#"
+[[provider]]
+header = "native.landh"
+links = ["production.lib"]
+
+[[provider]]
+header = "native.landh"
+links = ["test.lib"]
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(landc())
+        .arg(source)
+        .args(["-o"])
+        .arg(fixture.root.join("answer"))
+        .args(["--link-map"])
+        .arg(link_map)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("multiple providers"), "{stderr}");
+}

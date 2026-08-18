@@ -9,17 +9,62 @@ its general-purpose features:
 
 ## Getting Started
 
-Build the Linux x86_64 compiler with Docker:
+Install Land 0.0.1 for Windows x86_64 without administrator privileges:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/coder-ka/land/main/compiler/installers/windows-x86_64.ps1 -OutFile install-land.ps1
+./install-land.ps1
+landc --version
+```
+
+The installer verifies the published SHA-256 checksum, installs `landc.exe` to
+`%LOCALAPPDATA%\Land\bin`, and adds that directory to the user `PATH`.
+
+Install Land 0.0.1 for Linux x86_64:
+
+```sh
+curl --fail --location https://raw.githubusercontent.com/coder-ka/land/main/compiler/installers/linux-x86_64.sh --output install-land.sh
+sh install-land.sh
+landc --version
+```
+
+The Linux installer places `landc` in `~/.local/bin` and adds that directory to
+`~/.profile` when necessary.
+
+Compile a program:
+
+```powershell
+landc examples/answer.land -o answer.exe
+./answer.exe
+```
+
+### Building The Compiler
+
+Build the Linux x86_64 compiler natively:
 
 ```sh
 ./compiler/scripts/build-linux-x86_64.sh
 ```
 
-The compiler is written to `compiler/dist/landc-linux-x86_64`. Building only
-requires Docker. The resulting compiler invokes no external compiler, LLVM, or
-linker commands; standard Linux runtime libraries are still required.
+Building requires Rust, a C++ compiler, and static LLVM/LLD development
+libraries. Set `LLVM_CONFIG` if `llvm-config` has a nonstandard name. The
+compiler is written to `compiler/dist/landc-linux-x86_64`; it invokes no
+external compiler, LLVM, or linker commands. Standard Linux runtime libraries
+are still required.
 
-Compile a program:
+Build the standalone Windows x86_64 compiler from PowerShell:
+
+```powershell
+./compiler/scripts/build-windows-x86_64.ps1
+```
+
+This build requires Rust, Git, Visual Studio C++ Build Tools, and network
+access. The script downloads pinned LLVM/LLD development archives and builds
+their static libxml2 dependency in a local cache. The only distributed artifact
+is `compiler/dist/landc-windows-x86_64.exe`; it invokes no external compiler,
+LLVM, linker, or SDK commands.
+
+Compile a program with the Linux artifact:
 
 ```sh
 compiler/dist/landc-linux-x86_64 examples/answer.land -o answer
@@ -78,6 +123,21 @@ fn count(): i32 {
     let value: i32 = 40;
     value = value + 2;
     return value;
+}
+```
+
+Bindings may shadow earlier bindings. This is particularly useful when a
+linear value is consumed by an operation and returned in its next state:
+
+```land
+fn write_file(file: linear<pointer<u8>>, value: i32): linear<pointer<u8>> {
+    // The implementation consumes file and returns the usable file state.
+    return file;
+}
+
+fn write_answer(file: linear<pointer<u8>>): linear<pointer<u8>> {
+    let file = write_file(file, 42);
+    return file;
 }
 ```
 
@@ -207,6 +267,26 @@ fn relay(value: linear<i32>): linear<i32> {
 A moved value cannot be used again, and an available linear value cannot leave
 its scope.
 
+Land intentionally has no borrowing mechanism. An operation that needs
+borrow-like access to a linear resource consumes the resource argument and
+returns the resulting resource state. Callers are encouraged to bind that
+result as a new variable, usually by shadowing the consumed name. APIs such as
+file reads and writes should follow this consume-and-return convention rather
+than introducing an unchecked borrowed handle. When an operation also produces
+a value, it should return the resource and value together for tuple
+destructuring.
+
+```land
+fn read_count(file: linear<pointer<u8>>): (linear<pointer<u8>>, i32) {
+    return (file, 42);
+}
+
+fn read_answer(file: linear<pointer<u8>>): linear<pointer<u8>> {
+    let (file, count) = read_count(file);
+    return file;
+}
+```
+
 ### C ABI
 
 C declarations are written in `.landh` files. A `.landh` file may contain only
@@ -223,8 +303,23 @@ Import declarations from a regular `.land` file:
 import { acquire, release as dispose } from "./resource.landh";
 ```
 
-`.land` files cannot contain `extern` declarations. Linking the implementation
-is a separate build step.
+`.land` files cannot contain `extern` declarations. Native implementations are
+selected with a TOML link map. Each imported header must have exactly one
+provider in the selected map; a provider may contain multiple ordered linker
+inputs.
+
+```toml
+[[provider]]
+header = "resource.landh"
+links = ["build/resource.lib", "build/runtime.lib"]
+```
+
+Header and linker-input paths are relative to the link map. Different maps can
+select production and test implementations:
+
+```sh
+landc main.land -o app --link-map links.toml
+```
 
 The C ABI boundary currently supports `i32`, `u32`, `i64`, `u64`, pointers,
 function pointers, and `void` returns. `linear<T>` is ABI-equivalent to `T`.

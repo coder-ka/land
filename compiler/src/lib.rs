@@ -59,13 +59,20 @@ pub fn compile(source: &str) -> Result<String, CompileError> {
 }
 
 pub fn compile_file(path: impl AsRef<Path>) -> Result<String, String> {
-    let program = module::load(path.as_ref())?;
+    let program = module::load(path.as_ref())?.program;
     let resolved = semantic::analyze(&program).map_err(|error| error.to_string())?;
     codegen::generate(&resolved).map_err(|error| error.to_string())
 }
 
 pub fn compile_executable(path: impl AsRef<Path>) -> Result<String, String> {
-    let program = module::load(path.as_ref())?;
+    Ok(compile_executable_with_headers(path)?.0)
+}
+
+pub fn compile_executable_with_headers(
+    path: impl AsRef<Path>,
+) -> Result<(String, Vec<std::path::PathBuf>), String> {
+    let loaded = module::load(path.as_ref())?;
+    let program = loaded.program;
     let main = program
         .functions
         .iter()
@@ -79,7 +86,8 @@ pub fn compile_executable(path: impl AsRef<Path>) -> Result<String, String> {
         return Err("executable entry point must be `fn main(): i32`".to_owned());
     }
     let resolved = semantic::analyze(&program).map_err(|error| error.to_string())?;
-    codegen::generate(&resolved).map_err(|error| error.to_string())
+    let ir = codegen::generate(&resolved).map_err(|error| error.to_string())?;
+    Ok((ir, loaded.headers))
 }
 
 #[cfg(test)]
@@ -250,6 +258,20 @@ fn relay(value: linear<i32>): linear<i32> {
         let ir = compile(source).unwrap();
         assert!(ir.contains("define i32 @pass(i32 %value)"));
         assert!(ir.contains("call i32 @pass"));
+    }
+
+    #[test]
+    fn shadows_a_consumed_linear_value_with_its_returned_state() {
+        let source = r#"
+fn write(value: linear<pointer<u8>>, byte: u8): linear<pointer<u8>> {
+    return value;
+}
+fn update(value: linear<pointer<u8>>): linear<pointer<u8>> {
+    let value = write(value, 42u8);
+    return value;
+}
+"#;
+        compile(source).unwrap();
     }
 
     #[test]

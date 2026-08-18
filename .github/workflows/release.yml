@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version=$(cargo metadata --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "land-compiler") | .version')
+          test "$tag_version" = "$package_version"
+
+  build-linux-x86_64:
+    needs: validate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM and LLD
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-14 liblld-14-dev llvm-14-dev
+      - name: Build
+        env:
+          LLVM_CONFIG: llvm-config-14
+        run: ./compiler/scripts/build-linux-x86_64.sh
+      - name: Verify artifact
+        shell: bash
+        run: |
+          artifact=compiler/dist/landc-linux-x86_64
+          test "$($artifact --version)" = "landc ${GITHUB_REF_NAME#v}"
+          "$artifact" examples/answer.land -o "$RUNNER_TEMP/answer"
+          set +e
+          "$RUNNER_TEMP/answer"
+          status=$?
+          set -e
+          test "$status" -eq 42
+          (cd compiler/dist && sha256sum --check landc-linux-x86_64.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: |
+            compiler/dist/landc-linux-x86_64
+            compiler/dist/landc-linux-x86_64.sha256
+          if-no-files-found: error
+
+  build-windows-x86_64:
+    needs: validate
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: compiler/.cache/windows-x86_64
+          key: windows-x86_64-llvm-21.1.8-vcpkg-62739e5f
+      - name: Build
+        shell: pwsh
+        run: ./compiler/scripts/build-windows-x86_64.ps1
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          $artifact = Resolve-Path "compiler/dist/landc-windows-x86_64.exe"
+          $expectedVersion = "landc $($env:GITHUB_REF_NAME.Substring(1))"
+          if ((& $artifact --version) -ne $expectedVersion) {
+              throw "unexpected landc version"
+          }
+          $answer = Join-Path $env:RUNNER_TEMP "answer.exe"
+          & $artifact examples/answer.land -o $answer
+          if ($LASTEXITCODE -ne 0) { throw "compilation failed" }
+          $process = Start-Process -FilePath $answer -Wait -PassThru
+          if ($process.ExitCode -ne 42) { throw "expected exit code 42" }
+          $expectedHash = (Get-Content "$artifact.sha256").Split()[0]
+          $actualHash = (Get-FileHash $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) { throw "checksum mismatch" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: |
+            compiler/dist/landc-windows-x86_64.exe
+            compiler/dist/landc-windows-x86_64.exe.sha256
+          if-no-files-found: error
+
+  release:
+    needs:
+      - build-linux-x86_64
+      - build-windows-x86_64
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes --title "Land ${GITHUB_REF_NAME#v}"

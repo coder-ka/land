@@ -1,4 +1,5 @@
 /target/
 /compiler/dist/
+/compiler/.cache/
 *.ll
 *.bc
