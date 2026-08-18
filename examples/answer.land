@@ -1,0 +1,9 @@
+fn pair(): (i32, i32) {
+    return (40, 2);
+}
+
+fn main(): i32 {
+    let (left, right) = pair();
+    let values = [left, right];
+    return values[0] + values[1];
+}

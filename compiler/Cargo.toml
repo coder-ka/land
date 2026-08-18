@@ -1,0 +1,16 @@
+[package]
+name = "land-compiler"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "land"
+
+[[bin]]
+name = "landc"
+path = "src/main.rs"
+
+[dependencies]
+
+[features]
+embedded-backend = []

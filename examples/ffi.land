@@ -1,0 +1,7 @@
+import { acquire, release } from "./ffi.landh";
+
+fn lifecycle(): void {
+    let value = acquire();
+    release(value);
+    return;
+}

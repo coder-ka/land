@@ -1,0 +1,4 @@
+/target/
+/compiler/dist/
+*.ll
+*.bc

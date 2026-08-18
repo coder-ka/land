@@ -1,0 +1,12 @@
+fn i8_min(): i8 { return -128i8; }
+fn i8_max(): i8 { return 127i8; }
+fn i16_min(): i16 { return -32768i16; }
+fn i16_max(): i16 { return 32767i16; }
+fn i32_min(): i32 { return -2147483648i32; }
+fn i32_max(): i32 { return 2147483647i32; }
+fn i64_min(): i64 { return -9223372036854775808i64; }
+fn i64_max(): i64 { return 9223372036854775807i64; }
+fn u8_max(): u8 { return 255u8; }
+fn u16_max(): u16 { return 65535u16; }
+fn u32_max(): u32 { return 4294967295u32; }
+fn u64_max(): u64 { return 18446744073709551615u64; }

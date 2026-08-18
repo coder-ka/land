@@ -1,0 +1,11 @@
+fn increment(value: i32): i32 {
+    return value + 1;
+}
+
+fn apply<T>(value: T, operation: fn(T): T): T {
+    return operation(value);
+}
+
+fn main(): i32 {
+    return apply<i32>(41, increment);
+}

@@ -1,0 +1,29 @@
+fn increment(value: i32): i32 {
+    return value + 1;
+}
+
+fn apply<T>(value: T, operation: fn(T): T): T {
+    return operation(value);
+}
+
+fn identity<T>(value: T): T {
+    return value;
+}
+
+fn nested(): ((i32, i32), i32) {
+    return identity<((i32, i32), i32)>(((1, 2), 3));
+}
+
+fn flat(): (i32, i32, i32) {
+    return identity<(i32, i32, i32)>((1, 2, 3));
+}
+
+fn main(): i32 {
+    let ((first, second), third) = nested();
+    let (fourth, fifth, sixth) = flat();
+    let operations = [increment, increment];
+    let operation = operations[1];
+    let pair = (apply<i32>(20, operation), apply<i32>(20, increment));
+    let (left, right) = pair;
+    return left + right;
+}

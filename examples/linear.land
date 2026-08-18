@@ -1,0 +1,8 @@
+fn pass(value: linear<i32>): linear<i32> {
+    return value;
+}
+
+fn relay(value: linear<i32>): linear<i32> {
+    let next = pass(value);
+    return next;
+}
