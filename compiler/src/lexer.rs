@@ -10,6 +10,7 @@ pub struct Span {
 pub enum TokenKind {
     Fn,
     Extern,
+    Export,
     Let,
     Return,
     If,
@@ -79,6 +80,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, CompileError> {
                 let kind = match word.as_str() {
                     "fn" => TokenKind::Fn,
                     "extern" => TokenKind::Extern,
+                    "export" => TokenKind::Export,
                     "let" => TokenKind::Let,
                     "return" => TokenKind::Return,
                     "if" => TokenKind::If,

@@ -55,6 +55,32 @@ fn compiles_and_runs_a_native_executable() {
 }
 
 #[test]
+fn compiles_and_runs_the_modules_example() {
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/modules/main.land");
+    let directory =
+        std::env::temp_dir().join(format!("land-modules-example-{}", std::process::id()));
+    let executable = directory.join("modules-example");
+    let _ = fs::remove_dir_all(&directory);
+    fs::create_dir_all(&directory).unwrap();
+
+    let compile = Command::new(landc())
+        .arg(&source)
+        .args(["-o"])
+        .arg(&executable)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "landc failed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    assert_eq!(Command::new(&executable).status().unwrap().code(), Some(42));
+
+    fs::remove_dir_all(&directory).unwrap();
+}
+
+#[test]
 fn executable_requires_the_native_main_signature() {
     let fixture = Fixture::new();
     let source = fixture.root.join("main.land");

@@ -1,0 +1,11 @@
+fn add_impl(left: i32, right: i32): i32 {
+    return left + right;
+}
+
+export fn add(left: i32, right: i32): i32 {
+    return add_impl(left, right);
+}
+
+export fn forty_two(): i32 {
+    return add(40, 2);
+}

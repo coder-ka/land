@@ -113,6 +113,18 @@ fn main(): i32 {
     }
 
     #[test]
+    fn accepts_export_visibility_on_functions() {
+        let source = r#"
+export fn answer(): i32 { return 42; }
+fn main(): i32 { return answer(); }
+"#;
+
+        let ir = compile(source).unwrap();
+        assert!(ir.contains("define i32 @answer()"));
+        assert!(ir.contains("call i32 @answer()"));
+    }
+
+    #[test]
     fn observes_operator_precedence() {
         let ir = compile("fn main(): i32 { return 2 + 3 * 4; }").unwrap();
         let multiply = ir.find("mul i32 3, 4").unwrap();

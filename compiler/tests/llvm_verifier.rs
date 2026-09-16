@@ -31,8 +31,9 @@ fn main(): i32 {
 
     for source in sources {
         let ir = land::compile(source).unwrap();
+        let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
         let mut verifier = Command::new("llvm-as")
-            .args(["-o", "/dev/null", "-"])
+            .args(["-o", null_device, "-"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

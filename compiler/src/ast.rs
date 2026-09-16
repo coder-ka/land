@@ -25,6 +25,7 @@ pub struct ImportName {
 #[derive(Debug)]
 pub struct Function {
     pub name: String,
+    pub exported: bool,
     pub visible_functions: Option<HashMap<String, String>>,
     pub type_parameters: Vec<String>,
     pub parameters: Vec<Parameter>,

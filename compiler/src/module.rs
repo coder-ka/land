@@ -88,27 +88,26 @@ impl Loader {
     }
 
     fn combine(mut self, entry: &Path) -> Result<Program, String> {
-        let names = self
-            .order
-            .iter()
-            .enumerate()
-            .map(|(module_id, path)| {
-                let program = &self.programs[path];
-                let functions = program
-                    .functions
-                    .iter()
-                    .map(|function| {
-                        let name = if path == entry || function.body.is_none() {
-                            function.name.clone()
-                        } else {
-                            format!("__land_module_{module_id}_{}", function.name)
-                        };
-                        (function.name.clone(), name)
-                    })
-                    .collect::<HashMap<_, _>>();
-                (path.clone(), functions)
-            })
-            .collect::<HashMap<_, _>>();
+        let mut names = HashMap::new();
+        let mut exports = HashMap::new();
+        for (module_id, path) in self.order.iter().enumerate() {
+            let program = &self.programs[path];
+            let mut module_names = HashMap::new();
+            let mut module_exports = HashMap::new();
+            for function in &program.functions {
+                let symbol = if path == entry || function.body.is_none() {
+                    function.name.clone()
+                } else {
+                    format!("__land_module_{module_id}_{}", function.name)
+                };
+                module_names.insert(function.name.clone(), symbol.clone());
+                if function.exported {
+                    module_exports.insert(function.name.clone(), symbol);
+                }
+            }
+            names.insert(path.clone(), module_names);
+            exports.insert(path.clone(), module_exports);
+        }
 
         let mut functions = Vec::new();
         for path in &self.order {
@@ -117,18 +116,32 @@ impl Loader {
             let mut visible = own_names.clone();
             for import in &program.imports {
                 let dependency = self.resolve(path, &import.module)?;
-                let exports = &names[&dependency];
+                let dependency_exports = &exports[&dependency];
                 for imported in &import.names {
-                    let target = exports.get(&imported.imported).ok_or_else(|| {
-                        format!(
-                            "{}:{}:{}: module `{}` has no function `{}`",
-                            path.display(),
-                            import.span.line,
-                            import.span.column,
-                            import.module,
-                            imported.imported
-                        )
-                    })?;
+                    let target =
+                        dependency_exports
+                            .get(&imported.imported)
+                            .ok_or_else(|| {
+                                if names[&dependency].contains_key(&imported.imported) {
+                                    format!(
+                                        "{}:{}:{}: function `{}` is not exported from module `{}`",
+                                        path.display(),
+                                        import.span.line,
+                                        import.span.column,
+                                        imported.imported,
+                                        import.module
+                                    )
+                                } else {
+                                    format!(
+                                        "{}:{}:{}: module `{}` has no function `{}`",
+                                        path.display(),
+                                        import.span.line,
+                                        import.span.column,
+                                        import.module,
+                                        imported.imported
+                                    )
+                                }
+                            })?;
                     if visible
                         .insert(imported.local.clone(), target.clone())
                         .is_some()
@@ -267,7 +280,7 @@ mod tests {
         let fixture = Fixture::new();
         fixture.write(
             "math.land",
-            "fn one(): i32 { return 1; } fn add_one(value: i32): i32 { return value + one(); }",
+            "fn one(): i32 { return 1; } export fn add_one(value: i32): i32 { return value + one(); }",
         );
         let main = fixture.write(
             "main.land",
@@ -285,7 +298,7 @@ mod tests {
         let fixture = Fixture::new();
         fixture.write(
             "nested/identity.land",
-            "fn identity<T>(value: T): T { return value; }",
+            "export fn identity<T>(value: T): T { return value; }",
         );
         let main = fixture.write(
             "nested/main.land",
@@ -300,7 +313,7 @@ mod tests {
     #[test]
     fn aliases_named_imports() {
         let fixture = Fixture::new();
-        fixture.write("answer.land", "fn value(): i32 { return 42; }");
+        fixture.write("answer.land", "export fn value(): i32 { return 42; }");
         let main = fixture.write(
             "main.land",
             "import { value as answer } from \"./answer\"; fn main(): i32 { return answer(); }",
@@ -392,7 +405,7 @@ mod tests {
     #[test]
     fn alias_does_not_expose_the_original_name() {
         let fixture = Fixture::new();
-        fixture.write("answer.land", "fn value(): i32 { return 42; }");
+        fixture.write("answer.land", "export fn value(): i32 { return 42; }");
         let main = fixture.write(
             "main.land",
             "import { value as answer } from \"./answer\"; fn main(): i32 { return value(); }",
@@ -408,7 +421,7 @@ mod tests {
     #[test]
     fn rejects_missing_and_duplicate_imports() {
         let fixture = Fixture::new();
-        fixture.write("values.land", "fn available(): i32 { return 42; }");
+        fixture.write("values.land", "export fn available(): i32 { return 42; }");
         let missing = fixture.write(
             "missing.land",
             "import { absent } from \"./values\"; fn main(): i32 { return 0; }",
@@ -435,13 +448,29 @@ mod tests {
         let fixture = Fixture::new();
         let first = fixture.write(
             "first.land",
-            "import { second } from \"./second\"; fn first(): i32 { return second(); }",
+            "import { second } from \"./second\"; export fn first(): i32 { return second(); }",
         );
         fixture.write(
             "second.land",
-            "import { first } from \"./first\"; fn second(): i32 { return first(); }",
+            "import { first } from \"./first\"; export fn second(): i32 { return first(); }",
         );
 
         assert!(compile_file(first).unwrap_err().contains("circular import"));
+    }
+
+    #[test]
+    fn rejects_importing_unexported_function() {
+        let fixture = Fixture::new();
+        fixture.write("secret.land", "fn secret(): i32 { return 42; }");
+        let main = fixture.write(
+            "main.land",
+            "import { secret } from \"./secret\"; fn main(): i32 { return secret(); }",
+        );
+
+        assert!(
+            compile_file(main)
+                .unwrap_err()
+                .contains("is not exported from module")
+        );
     }
 }

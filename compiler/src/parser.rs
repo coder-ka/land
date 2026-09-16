@@ -97,6 +97,12 @@ impl Parser {
     }
 
     fn parse_function(&mut self) -> Result<Function, CompileError> {
+        let exported = if self.current().kind == TokenKind::Export {
+            self.advance();
+            true
+        } else {
+            false
+        };
         let external = if self.current().kind == TokenKind::Extern {
             self.advance();
             let abi = self.advance();
@@ -137,6 +143,7 @@ impl Parser {
 
         Ok(Function {
             name,
+            exported: exported || external,
             visible_functions: None,
             type_parameters,
             parameters,

@@ -1,0 +1,5 @@
+import { forty_two, add as plus } from "./math";
+
+fn main(): i32 {
+    return plus(forty_two(), 0);
+}

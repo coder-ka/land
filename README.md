@@ -239,8 +239,16 @@ fn answer(): i32 {
 ### Imports
 
 Imports are named, may use aliases, and must precede function declarations.
+Only `export fn` declarations can be imported; other functions are private to
+their module. `extern "C" fn` declarations in `.landh` files are always
+importable.
 
 ```land
+// math.land
+export fn add(left: i32, right: i32): i32 { return left + right; }
+export fn subtract(left: i32, right: i32): i32 { return left - right; }
+
+// main.land
 import { add, subtract as minus } from "./math";
 ```
 
