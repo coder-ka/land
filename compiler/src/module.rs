@@ -118,30 +118,27 @@ impl Loader {
                 let dependency = self.resolve(path, &import.module)?;
                 let dependency_exports = &exports[&dependency];
                 for imported in &import.names {
-                    let target =
-                        dependency_exports
-                            .get(&imported.imported)
-                            .ok_or_else(|| {
-                                if names[&dependency].contains_key(&imported.imported) {
-                                    format!(
-                                        "{}:{}:{}: function `{}` is not exported from module `{}`",
-                                        path.display(),
-                                        import.span.line,
-                                        import.span.column,
-                                        imported.imported,
-                                        import.module
-                                    )
-                                } else {
-                                    format!(
-                                        "{}:{}:{}: module `{}` has no function `{}`",
-                                        path.display(),
-                                        import.span.line,
-                                        import.span.column,
-                                        import.module,
-                                        imported.imported
-                                    )
-                                }
-                            })?;
+                    let target = dependency_exports.get(&imported.imported).ok_or_else(|| {
+                        if names[&dependency].contains_key(&imported.imported) {
+                            format!(
+                                "{}:{}:{}: function `{}` is not exported from module `{}`",
+                                path.display(),
+                                import.span.line,
+                                import.span.column,
+                                imported.imported,
+                                import.module
+                            )
+                        } else {
+                            format!(
+                                "{}:{}:{}: module `{}` has no function `{}`",
+                                path.display(),
+                                import.span.line,
+                                import.span.column,
+                                import.module,
+                                imported.imported
+                            )
+                        }
+                    })?;
                     if visible
                         .insert(imported.local.clone(), target.clone())
                         .is_some()

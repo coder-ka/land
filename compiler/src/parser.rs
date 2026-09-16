@@ -259,10 +259,28 @@ impl Parser {
             }
             TokenKind::For => {
                 let span = self.advance().span;
-                let condition = self.parse_expression(0)?;
+                let initializer = if self.current().kind == TokenKind::Semicolon {
+                    None
+                } else {
+                    Some(Box::new(self.parse_for_initializer()?))
+                };
+                self.expect_simple(TokenKind::Semicolon)?;
+                let condition = if self.current().kind == TokenKind::Semicolon {
+                    None
+                } else {
+                    Some(self.parse_expression(0)?)
+                };
+                self.expect_simple(TokenKind::Semicolon)?;
+                let update = if self.current().kind == TokenKind::LeftBrace {
+                    None
+                } else {
+                    Some(Box::new(self.parse_for_update()?))
+                };
                 let body = self.parse_block()?;
                 Ok(Statement::For {
+                    initializer,
                     condition,
+                    update,
                     body,
                     span,
                 })
@@ -273,6 +291,44 @@ impl Parser {
                 Ok(Statement::Expression(expression))
             }
         }
+    }
+
+    fn parse_for_initializer(&mut self) -> Result<Statement, CompileError> {
+        let span = self.expect_simple(TokenKind::Let)?.span;
+        let pattern = self.parse_pattern()?;
+        let annotation = if self.current().kind == TokenKind::Colon {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        self.expect_simple(TokenKind::Equal)?;
+        let value = self.parse_expression(0)?;
+        Ok(Statement::Let {
+            pattern,
+            annotation,
+            value,
+            span,
+        })
+    }
+
+    fn parse_for_update(&mut self) -> Result<Statement, CompileError> {
+        if let TokenKind::Identifier(_) = self.current().kind
+            && self.next().kind == TokenKind::Equal
+        {
+            let token = self.advance();
+            let TokenKind::Identifier(name) = token.kind else {
+                unreachable!();
+            };
+            self.advance();
+            let value = self.parse_expression(0)?;
+            return Ok(Statement::Assign {
+                name,
+                value,
+                span: token.span,
+            });
+        }
+        Ok(Statement::Expression(self.parse_expression(0)?))
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, CompileError> {
@@ -686,6 +742,7 @@ fn token_name(kind: &TokenKind) -> &'static str {
     match kind {
         TokenKind::Fn => "fn",
         TokenKind::Extern => "extern",
+        TokenKind::Let => "let",
         TokenKind::Else => "else",
         TokenKind::For => "for",
         TokenKind::LeftParen => "(",

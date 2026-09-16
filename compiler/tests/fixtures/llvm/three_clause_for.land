@@ -1,0 +1,23 @@
+fn sum(limit: i32): i32 {
+    let total = 0;
+    for let value = 0; value < limit; value = value + 1 {
+        total = total + value;
+    }
+    return total;
+}
+
+fn drain(remaining: i32): i32 {
+    for ; remaining > 0; remaining = remaining - 1 {
+    }
+    return remaining;
+}
+
+fn spin(): i32 {
+    for ; ; {
+        return 7;
+    }
+}
+
+fn main(): i32 {
+    return sum(10) + drain(0) + spin() - 7;
+}

@@ -48,7 +48,9 @@ pub enum Statement {
         else_body: Option<Vec<Statement>>,
     },
     For {
-        condition: Expression,
+        initializer: Option<Box<Statement>>,
+        condition: Option<Expression>,
+        update: Option<Box<Statement>>,
         body: Vec<Statement>,
     },
 }
@@ -451,10 +453,18 @@ impl<'a> Checker<'a> {
                 span,
             } => self.lower_if(condition, then_body, else_body.as_deref(), *span),
             ast::Statement::For {
+                initializer,
                 condition,
+                update,
                 body,
                 span,
-            } => self.lower_for(condition, body, *span),
+            } => self.lower_for(
+                initializer.as_deref(),
+                condition.as_ref(),
+                update.as_deref(),
+                body,
+                *span,
+            ),
         }
     }
 
@@ -527,23 +537,38 @@ impl<'a> Checker<'a> {
 
     fn lower_for(
         &mut self,
-        condition: &ast::Expression,
+        initializer: Option<&ast::Statement>,
+        condition: Option<&ast::Expression>,
+        update: Option<&ast::Statement>,
         body: &[ast::Statement],
         span: Span,
     ) -> Result<(Statement, bool), CompileError> {
-        let before_condition = self.environment.snapshot();
-        let condition = self.lower_expression(condition)?;
-        if condition.result_type != Type::Bool {
-            return self.type_error(&Type::Bool, &condition.result_type, condition.span);
-        }
-        let loop_entry = self.environment.outer_state(before_condition.len());
-        if before_condition != loop_entry {
-            return Err(CompileError::new(
-                span.line,
-                span.column,
-                "for condition cannot move a linear value",
-            ));
-        }
+        self.environment.push_scope();
+        let initializer = match initializer {
+            Some(initializer) => Some(Box::new(self.lower_statement(initializer)?.0)),
+            None => None,
+        };
+        let loop_entry = self.environment.snapshot();
+        let length = loop_entry.len();
+
+        let condition = match condition {
+            Some(condition) => {
+                let condition = self.lower_expression(condition)?;
+                if condition.result_type != Type::Bool {
+                    return self.type_error(&Type::Bool, &condition.result_type, condition.span);
+                }
+                if self.environment.outer_state(length) != loop_entry {
+                    return Err(CompileError::new(
+                        span.line,
+                        span.column,
+                        "for condition cannot move a linear value",
+                    ));
+                }
+                Some(condition)
+            }
+            None => None,
+        };
+
         let (body, after_body, body_terminated) = self.lower_scoped_branch(body, &loop_entry)?;
         if !body_terminated && loop_entry != after_body {
             return Err(CompileError::new(
@@ -552,9 +577,40 @@ impl<'a> Checker<'a> {
                 "linear value must have the same state after each loop iteration",
             ));
         }
+
+        let update = match update {
+            Some(update) => {
+                self.environment.restore(&loop_entry);
+                let update = Box::new(self.lower_statement(update)?.0);
+                if self.environment.outer_state(length) != loop_entry {
+                    return Err(CompileError::new(
+                        span.line,
+                        span.column,
+                        "linear value must have the same state after each loop iteration",
+                    ));
+                }
+                Some(update)
+            }
+            None => {
+                self.environment.restore(&loop_entry);
+                None
+            }
+        };
+
+        let terminated = condition
+            .as_ref()
+            .is_none_or(|condition| matches!(&condition.kind, ExpressionKind::Boolean(true)));
         self.environment.restore(&loop_entry);
-        let terminated = matches!(condition.kind, ExpressionKind::Boolean(true));
-        Ok((Statement::For { condition, body }, terminated))
+        self.environment.pop_scope(!terminated)?;
+        Ok((
+            Statement::For {
+                initializer,
+                condition,
+                update,
+                body,
+            },
+            terminated,
+        ))
     }
 
     fn lower_expression(

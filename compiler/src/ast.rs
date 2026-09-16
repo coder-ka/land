@@ -239,7 +239,9 @@ pub enum Statement {
         span: Span,
     },
     For {
-        condition: Expression,
+        initializer: Option<Box<Statement>>,
+        condition: Option<Expression>,
+        update: Option<Box<Statement>>,
         body: Vec<Statement>,
         span: Span,
     },

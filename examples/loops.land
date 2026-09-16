@@ -1,0 +1,11 @@
+fn sum_to(limit: i32): i32 {
+    let total = 0;
+    for let value = 1; value <= limit; value = value + 1 {
+        total = total + value;
+    }
+    return total;
+}
+
+fn main(): i32 {
+    return sum_to(9);
+}

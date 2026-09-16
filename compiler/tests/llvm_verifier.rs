@@ -16,6 +16,7 @@ fn llvm_verifies_complex_generated_programs() {
     let sources = [
         include_str!("fixtures/llvm/compound.land"),
         include_str!("fixtures/llvm/callable_expressions.land"),
+        include_str!("fixtures/llvm/three_clause_for.land"),
         r#"
 fn identity<T>(value: T): T { return value; }
 fn increment(value: i32): i32 { return value + 1; }

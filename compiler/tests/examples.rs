@@ -12,3 +12,14 @@ fn compiles_the_modules_example() {
     assert!(ir.contains("call i32 @__land_module_0_forty_two()"));
     assert!(ir.contains("add i32"));
 }
+
+#[test]
+fn compiles_the_loops_example() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/loops.land");
+    let ir = land::compile_file(&root).unwrap();
+
+    assert!(ir.contains("for.condition."));
+    assert!(ir.contains("for.body."));
+    assert!(ir.contains("for.update."));
+    assert!(ir.contains("br label %for.condition."));
+}

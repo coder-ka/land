@@ -154,7 +154,17 @@ impl FunctionGenerator<'_> {
                 then_body,
                 else_body,
             } => self.generate_if(condition, then_body, else_body.as_deref()),
-            Statement::For { condition, body } => self.generate_for(condition, body),
+            Statement::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => self.generate_for(
+                initializer.as_deref(),
+                condition.as_ref(),
+                update.as_deref(),
+                body,
+            ),
         }
     }
 
@@ -197,27 +207,37 @@ impl FunctionGenerator<'_> {
         false
     }
 
-    fn generate_for(&mut self, condition: &Expression, body: &[Statement]) -> bool {
-        if matches!(&condition.kind, ExpressionKind::Boolean(false)) {
+    fn generate_for(
+        &mut self,
+        initializer: Option<&Statement>,
+        condition: Option<&Expression>,
+        update: Option<&Statement>,
+        body: &[Statement],
+    ) -> bool {
+        if let Some(initializer) = initializer {
+            self.generate_statement(initializer);
+        }
+
+        if matches!(
+            condition.map(|condition| &condition.kind),
+            Some(ExpressionKind::Boolean(false))
+        ) {
             return false;
         }
-        if matches!(&condition.kind, ExpressionKind::Boolean(true)) {
-            let body_label = self.allocate_label("for.body");
-            self.output
-                .push_str(&format!("  br label %{body_label}\n\n{body_label}:\n"));
-            let body_terminated = self.generate_block(body);
-            if !body_terminated {
-                self.output.push_str(&format!("  br label %{body_label}\n"));
-            }
-            return true;
+        if condition
+            .is_none_or(|condition| matches!(&condition.kind, ExpressionKind::Boolean(true)))
+        {
+            return self.generate_infinite_for(update, body);
         }
+
         let condition_label = self.allocate_label("for.condition");
         let body_label = self.allocate_label("for.body");
+        let update_label = self.allocate_label("for.update");
         let end_label = self.allocate_label("for.end");
         self.output.push_str(&format!(
             "  br label %{condition_label}\n\n{condition_label}:\n"
         ));
-        let condition_value = self.generate_expression(condition);
+        let condition_value = self.generate_expression(condition.unwrap());
         self.output.push_str(&format!(
             "  br i1 {}, label %{body_label}, label %{end_label}\n\n{body_label}:\n",
             condition_value.operand()
@@ -225,10 +245,30 @@ impl FunctionGenerator<'_> {
         let body_terminated = self.generate_block(body);
         if !body_terminated {
             self.output
-                .push_str(&format!("  br label %{condition_label}\n"));
+                .push_str(&format!("  br label %{update_label}\n"));
         }
+        self.output.push_str(&format!("\n{update_label}:\n"));
+        if let Some(update) = update {
+            self.generate_statement(update);
+        }
+        self.output
+            .push_str(&format!("  br label %{condition_label}\n"));
         self.output.push_str(&format!("\n{end_label}:\n"));
         false
+    }
+
+    fn generate_infinite_for(&mut self, update: Option<&Statement>, body: &[Statement]) -> bool {
+        let body_label = self.allocate_label("for.body");
+        self.output
+            .push_str(&format!("  br label %{body_label}\n\n{body_label}:\n"));
+        let body_terminated = self.generate_block(body);
+        if !body_terminated {
+            if let Some(update) = update {
+                self.generate_statement(update);
+            }
+            self.output.push_str(&format!("  br label %{body_label}\n"));
+        }
+        true
     }
 
     fn generate_expression(&mut self, expression: &Expression) -> TypedValue {
@@ -733,10 +773,40 @@ fn collect_specializations(
                     collect_specializations(else_body, substitutions, program, discovered);
                 }
             }
-            Statement::For { condition, body } => {
-                collect_in_expression(condition, substitutions, program, discovered);
-                if !matches!(&condition.kind, ExpressionKind::Boolean(false)) {
+            Statement::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                if let Some(initializer) = initializer {
+                    collect_specializations(
+                        std::slice::from_ref(&**initializer),
+                        substitutions,
+                        program,
+                        discovered,
+                    );
+                }
+                if let Some(condition) = condition {
+                    collect_in_expression(condition, substitutions, program, discovered);
+                }
+                let runs = !matches!(
+                    condition,
+                    Some(Expression {
+                        kind: ExpressionKind::Boolean(false),
+                        ..
+                    })
+                );
+                if runs {
                     collect_specializations(body, substitutions, program, discovered);
+                    if let Some(update) = update {
+                        collect_specializations(
+                            std::slice::from_ref(&**update),
+                            substitutions,
+                            program,
+                            discovered,
+                        );
+                    }
                 }
             }
         }

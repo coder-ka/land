@@ -154,7 +154,9 @@ fn positive(value: i32): bool {
 
 ### Control Flow
 
-`if` conditions and conditional `for` loops require `bool` values.
+`if` and `for` conditions require `bool` values. A `for` loop has three
+clauses separated by `;`: an initializer, a condition, and an update. Any
+clause may be omitted, for example `for ; ready; { ... }` or `for ; ; { ... }`.
 
 ```land
 fn clamp(value: i32): i32 {
@@ -165,11 +167,12 @@ fn clamp(value: i32): i32 {
     }
 }
 
-fn wait(ready: bool): void {
-    for ready {
-        return;
+fn sum_to(limit: i32): i32 {
+    let total = 0;
+    for let value = 1; value <= limit; value = value + 1 {
+        total = total + value;
     }
-    return;
+    return total;
 }
 ```
 

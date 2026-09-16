@@ -225,11 +225,11 @@ fn main(): i32 {
     fn compiles_assignment_and_for_loop() {
         let source = r#"
 fn main(): i32 {
-    let value = 0;
-    for value < 42 {
-        value = value + 1;
+    let total = 0;
+    for let value = 0; value < 42; value = value + 1 {
+        total = total + value;
     }
-    return value;
+    return total;
 }
 "#;
 
@@ -237,6 +237,7 @@ fn main(): i32 {
         assert!(ir.contains("alloca i32"));
         assert!(ir.contains("for.condition.0:"));
         assert!(ir.contains("for.body.1:"));
+        assert!(ir.contains("for.update.2:"));
         assert!(ir.contains("br label %for.condition.0"));
     }
 
@@ -249,9 +250,38 @@ fn main(): i32 {
 
     #[test]
     fn keeps_loop_declarations_scoped() {
-        let source = "fn main(): i32 { for false { let inside = 1; } return inside; }";
+        let source = "fn main(): i32 { for ; false; { let inside = 1; } return inside; }";
         let error = compile(source).unwrap_err();
         assert!(error.message.contains("unknown name `inside`"));
+    }
+
+    #[test]
+    fn allows_empty_for_clauses() {
+        let ir = compile("fn main(): i32 { for ; ; { return 0; } }").unwrap();
+        assert!(ir.contains("for.body"));
+    }
+
+    #[test]
+    fn scopes_for_initializer_bindings() {
+        let source = "fn main(): i32 { for let value = 0; false; { return value; } return value; }";
+        let error = compile(source).unwrap_err();
+        assert!(error.message.contains("unknown name `value`"));
+    }
+
+    #[test]
+    fn rejects_moving_linear_value_in_for_condition() {
+        let source = r#"
+fn main(consume: fn(linear<bool>): bool, value: linear<bool>): i32 {
+    for ; consume(value); { return 0; }
+    return 0;
+}
+"#;
+        let error = compile(source).unwrap_err();
+        assert!(
+            error
+                .message
+                .contains("for condition cannot move a linear value")
+        );
     }
 
     #[test]
@@ -651,7 +681,7 @@ fn flat(): (i32, i32, i32) {
 
     #[test]
     fn compiles_constant_true_terminating_loop() {
-        let ir = compile("fn main(): i32 { for true { return 42; } }").unwrap();
+        let ir = compile("fn main(): i32 { for ; true; { return 42; } }").unwrap();
         assert!(ir.contains("ret i32 42"));
     }
 
@@ -682,7 +712,7 @@ fn choose<T>(condition: bool, value: T): T {
     if condition { return value; } else { return value; }
 }
 fn cycle<T>(condition: bool, value: T): T {
-    for condition {
+    for ; condition; {
         let next = identity<T>(value);
         value = next;
     }
@@ -862,7 +892,7 @@ fn main(): void { grow<i32>(); return; }
 
         let nested_for = format!(
             "fn main(): i32 {{ {}return 0;{} }}",
-            "for true { ".repeat(140),
+            "for ; true; { ".repeat(140),
             " }".repeat(140)
         );
         assert!(
@@ -878,7 +908,7 @@ fn main(): void { grow<i32>(); return; }
         let source = r#"
 fn identity<T>(value: T): T { return value; }
 fn main(): i32 {
-    for false { identity<i32>(0); }
+    for ; false; { identity<i32>(0); }
     return 42;
 }
 "#;
